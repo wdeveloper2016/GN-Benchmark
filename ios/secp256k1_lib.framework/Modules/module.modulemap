@@ -1,0 +1,6 @@
+framework module secp256k1_lib {
+  umbrella header "secp256k1_lib.h"
+
+  export *
+  module * { export * }
+}

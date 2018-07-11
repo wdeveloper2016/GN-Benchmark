@@ -40,69 +40,94 @@ export default class App extends React.Component {
     }
   }
 
-  getLatency(func) {
+  getLatencies() {
     return new Promise(async (resolvePromise) => {
-      const echash = '82ff40c0a986c6a5cfad4ddf4c3aa6996f1a7837f9c398e17e5de5cbd5a12b28';
-      const ecprivkey = '3c9229289a6125f7fdf1885a77bb12c37a8d3b4962d936f7e3084dece32a3ca1';
-      const msg = '3c9229289a6125f7fdf1885a77bb12c37a8d3b4962d936f7e3084dece32a3ca1';
+      const msg = [
+        '0x3c9229289a6125f7fdf1885a77bb12c37a8d3b4962d936f7e3084dece32a3ca1',
+        '3c9229289a6125f7fdf1885a77bb12c37a8d3b4962d936f7e3084dece32a3ca1',
+      ];
+      const ecprivkey = [
+        Buffer.from('3c9229289a6125f7fdf1885a77bb12c37a8d3b4962d936f7e3084dece32a3ca1', 'hex'),
+        '3c9229289a6125f7fdf1885a77bb12c37a8d3b4962d936f7e3084dece32a3ca1',
+      ];
 
-      let promiseEth = null;
-      let promiseSecp = null;
-      if (func === FUNC_HASH) {
-        promiseEth = new Promise((resolve) => {
-          ethUtils.keccak256(msg);
+      let echash = ['', ''];
+      let r = ['', ''];
+      let s = ['', ''];
+      let v = [27, 27];
+      let result = ['', ''];
+
+      const promiseFunc1 = () => (new Promise((resolve) => {
+        echash[0] = ethUtils.keccak256(msg[0]);
+        resolve();
+      }));
+      const promiseFunc2 = () => (new Promise((resolve) => {
+        FastSecp256k1BridgeNativeModule.keccak256(msg[1]).then((hash) => {
+          echash[1] = hash;
           resolve();
         });
-        promiseSecp = FastSecp256k1BridgeNativeModule.keccak256(msg);
-      } else if (func === FUNC_SIGN) {
-        promiseEth = new Promise((resolve) => {
-          ethUtils.ecsign(Buffer.from(echash, 'hex'), Buffer.from(ecprivkey, 'hex'));
+      }));
+      const promiseFunc3 = () => (new Promise((resolve) => {
+        const sig = ethUtils.ecsign(echash[0], ecprivkey[0]);
+        r[0] = sig.r;
+        s[0] = sig.s;
+        v[0] = sig.v;
+        resolve();
+      }));
+      const promiseFunc4 = () => (new Promise((resolve) => {
+        FastSecp256k1BridgeNativeModule.ecsign(echash[1], ecprivkey[1]).then(sig => {
+          r[1] = sig.slice(0, 64);
+          s[1] = sig.slice(64, 128);
+          v[1] = 27 + parseInt(sig.slice(128, 130));
           resolve();
         });
-        promiseSecp = FastSecp256k1BridgeNativeModule.ecsign(echash, ecprivkey);
-      } else if (func === FUNC_VERIFY) {
-        const r = '99e71a99cb2270b8cac5254f9e99b6210c6c10224a1579cf389ef88b20a1abe9';
-        const s = '129ff05af364204442bdb53ab6f18a99ab48acc9326fa689f228040429e3ca66';
-        promiseEth = new Promise((resolve) => {
-          ethUtils.ecrecover(Buffer.from(echash, 'hex'), 27, Buffer.from(r, 'hex'), Buffer.from(s, 'hex'));
+      }));
+      const promiseFunc5 = () => (new Promise((resolve) => {
+        result[0] = ethUtils.ecrecover(echash[0], v[0], r[0], s[0]);
+        resolve();
+      }));
+      const promiseFunc6 = () => (new Promise((resolve) => {
+        FastSecp256k1BridgeNativeModule.ecrecover(echash[1], r[1], s[1], v[1]).then(pubkey => {
+          result[1] = pubkey;
           resolve();
         });
-        promiseSecp = FastSecp256k1BridgeNativeModule.ecrecover(echash, r, s, 27);
+      }));
+
+      const promiseFunctions = [
+        promiseFunc1,
+        promiseFunc2,
+        promiseFunc3,
+        promiseFunc4,
+        promiseFunc5,
+        promiseFunc6,
+      ];
+      const latencies = [];
+      for (let i = 0; i < promiseFunctions.length; i++) {
+        const startTime = Date.now();
+        for (let j = 0; j < NUM_TESTS; j++) {
+          await promiseFunctions[i]();
+        }
+        const latency = Date.now() - startTime;
+        latencies.push(latency);
       }
 
-      let latencyEth, latencySecp;
-      let startTime;
-
-      startTime = Date.now();
-      for (let i = 0; i < NUM_TESTS; i ++) {
-        await promiseEth;
-      }
-      latencyEth = Date.now() - startTime;
-
-      startTime = Date.now();
-      for (let i = 0; i < NUM_TESTS; i ++) {
-        await promiseSecp;
-      }
-      latencySecp = Date.now() - startTime;
-
-      resolvePromise([latencyEth, latencySecp]);
+      resolvePromise(latencies);
     });
   }
 
   runTest = async () => {
     this.setState({ running: true });
 
-    const latency = [
-      await this.getLatency(FUNC_HASH),
-      await this.getLatency(FUNC_SIGN),
-      await this.getLatency(FUNC_VERIFY),
-    ];
+    const latencies = await this.getLatencies();
 
     const { tableData } = this.state;
     this.setState({
       tableData: tableData.map((item, index) => ({
         ...item,
-        latency: latency[index]
+        latency: [
+          latencies[index * 2],
+          latencies[(index * 2) + 1]
+        ],
       })),
       running: false,
     });
@@ -110,8 +135,8 @@ export default class App extends React.Component {
 
   renderRow = ({ item }) => {
     const { title, latency } = item;
-    const ethLatency = (latency.length > 0) ? latency[0] : '';
-    const secpLatency = (latency.length > 1) ? latency[1] : '';
+    const ethLatency = (latency.length > 0) ? `${latency[0]} ms` : '';
+    const secpLatency = (latency.length > 1) ? `${latency[1]} ms` : '';
 
     const rowStyle = {
       padding: 10,

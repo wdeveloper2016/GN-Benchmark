@@ -29,6 +29,11 @@
 // https://facebook.github.io/react-native/docs/native-modules-ios.html
 RCT_EXPORT_MODULE();
 
++ (BOOL)requiresMainQueueSetup
+{
+  return YES;
+}
+
 // Export constants
 // https://facebook.github.io/react-native/releases/next/docs/native-modules-ios.html#exporting-constants
 - (NSDictionary *)constantsToExport

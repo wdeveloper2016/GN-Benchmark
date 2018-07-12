@@ -1,10 +1,10 @@
 import React from 'react';
 import {
   View,
-  Button,
+  TouchableOpacity,
+  StatusBar,
   Text,
   FlatList,
-  StyleSheet,
 } from 'react-native';
 import '../global';
 import ethUtils from 'ethereumjs-util';
@@ -14,9 +14,13 @@ import FastSecp256k1BridgeNativeModule from './lib/FastSecp256k1BridgeNativeModu
 const FUNC_HASH = 'hash';
 const FUNC_SIGN = 'sign';
 const FUNC_VERIFY = 'verify';
-const NUM_TESTS = 1000;
+const NUM_TESTS = 100;
 
-const FONTSIZE = 12;
+const TEXT_STYLE = {
+  fontFamily: 'Michroma',
+  fontSize: 10,
+  color: '#FFFFFF',
+};
 
 export default class App extends React.Component {
   constructor(props) {
@@ -24,15 +28,15 @@ export default class App extends React.Component {
     this.state = {
       tableData: [
         {
-          title: 'Hash generating',
+          title: 'Hash\nGenerating',
           latency: [],
         },
         {
-          title: 'Signing a message',
+          title: 'Signing\nMessage',
           latency: [],
         },
         {
-          title: 'Verifying a message',
+          title: 'Verifying\nMessage',
           latency: [],
         },
       ],
@@ -108,7 +112,7 @@ export default class App extends React.Component {
           await promiseFunctions[i]();
         }
         const latency = Date.now() - startTime;
-        latencies.push(latency);
+        latencies.push((latency / NUM_TESTS).toFixed(2));
       }
 
       resolvePromise(latencies);
@@ -116,11 +120,15 @@ export default class App extends React.Component {
   }
 
   runTest = async () => {
+    const { tableData, running } = this.state;
+    if (running) {
+      return;
+    }
+
     this.setState({ running: true });
 
     const latencies = await this.getLatencies();
 
-    const { tableData } = this.state;
     this.setState({
       tableData: tableData.map((item, index) => ({
         ...item,
@@ -133,26 +141,34 @@ export default class App extends React.Component {
     });
   }
 
-  renderRow = ({ item }) => {
+  renderRow = ({ item, index }) => {
+    const { tableData } = this.state;
     const { title, latency } = item;
     const ethLatency = (latency.length > 0) ? `${latency[0]} ms` : '';
     const secpLatency = (latency.length > 1) ? `${latency[1]} ms` : '';
+    const improveFactor = (latency.length > 1) ? `${(latency[0] / latency[1]).toFixed(2)} x` : '';
+    const lastRow = (index === tableData.length - 1);
 
     const rowStyle = {
       padding: 10,
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: 'white',
-      borderColor: 'gray',
-      borderBottomWidth: 0.5,
+      backgroundColor: '#2B2F34',
+      borderColor: '#32363D',
+      borderBottomWidth: lastRow ? 0 : 0.5,
     };
     const functionTextStyle = {
+      ...TEXT_STYLE,
       flex: 3,
-      fontSize: FONTSIZE,
     };
     const latencyTextStyle = {
+      ...TEXT_STYLE,
       flex: 2,
-      fontSize: FONTSIZE,
+    };
+    const improveTextStyle = {
+      ...TEXT_STYLE,
+      flex: 2,
     };
 
     return (
@@ -160,6 +176,7 @@ export default class App extends React.Component {
         <Text style={functionTextStyle}>{title}</Text>
         <Text style={latencyTextStyle}>{ethLatency}</Text>
         <Text style={latencyTextStyle}>{secpLatency}</Text>
+        <Text style={improveTextStyle}>{improveFactor}</Text>
       </View>
     );
   }
@@ -169,49 +186,66 @@ export default class App extends React.Component {
       padding: 10,
       flexDirection: 'row',
       alignItems: 'center',
-      borderColor: 'gray',
-      borderBottomWidth: 0.5,
     };
     const libTextStyle = {
+      ...TEXT_STYLE,
       flex: 2,
-      fontSize: FONTSIZE,
     };
 
     return (
       <View style={headerStyle}>
-        <Text style={{ flex: 3 }} />
-        <Text style={libTextStyle}>Ethereum Util</Text>
-        <Text style={libTextStyle}>Fast Secp256k</Text>
+        <View style={{ flex: 3 }} />
+        <Text style={libTextStyle}>{'Ethereum\nUtil'}</Text>
+        <Text style={libTextStyle}>{'Fast\nSecp256k'}</Text>
+        <Text style={libTextStyle}>{'Improve\nFactor'}</Text>
       </View>
+    );
+  }
+
+  renderFooter = (running) => {
+    const footerStyle = {
+      paddingTop: 16,
+      paddingBottom: 16,
+      justifyContent: 'center',
+      alignItems: 'center',
+    };
+    const buttonTextStyle = {
+      ...TEXT_STYLE,
+      fontSize: 14,
+      opacity: running ? 0.5 : 1,
+    };
+
+    return (
+      <TouchableOpacity
+        style={footerStyle}
+        disabled={running}
+        onPress={this.runTest}
+      >
+        <Text style={buttonTextStyle}>Run Test</Text>
+      </TouchableOpacity>
     );
   }
 
   render() {
     const { tableData, running } = this.state;
 
+    const containerStyle = {
+      flex: 1,
+      paddingTop: 120,
+      backgroundColor: '#31353B',
+    };
+
     return (
-      <View style={styles.container}>
+      <View style={containerStyle}>
+        <StatusBar barStyle="light-content" />
         <FlatList
           renderItem={this.renderRow}
           ListHeaderComponent={this.renderHeader}
+          ListFooterComponent={() => this.renderFooter(running)}
           data={tableData}
           keyExtractor={item => item.title}
-        />
-        <Button
-          title="Run Test"
-          disabled={running}
-          onPress={this.runTest}
         />
       </View>
     );
   }
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: 60,
-    paddingBottom: 60,
-    backgroundColor: '#F5FCFF',
-  },
-});
